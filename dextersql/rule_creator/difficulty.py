@@ -42,11 +42,11 @@ def _count_nested_selects(sql: str) -> int:
 def estimate_difficulty(gold_sql: str) -> Difficulty:
     """
     Structural-complexity score over: joins, nesting, aggregation, grouping,
-    ordering, set operations. Each present feature contributes to the score,
-    and the tier boundaries simply split that score into three bands. They
-    don't need to be exact -- only consistent enough to stratify sampling
-    across a real range of SQL complexity. Used only when the training data
-    carries no difficulty label of its own.
+    ordering, set operations. Each present feature contributes to the score;
+    the tier boundaries were picked to roughly track BIRD dev's own
+    simple/moderate/challenging distribution (see README.md) -- they don't
+    need to be exact, only consistent enough to stratify sampling across a
+    real range of SQL complexity.
     """
     sql = gold_sql or ""
 

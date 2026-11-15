@@ -87,6 +87,24 @@ Before running it, set the placeholders inside the script for:
 - optional few-shot JSON path
 - model name and endpoint
 
+## Reproducing the Reported Rule Set
+
+`config/rule_creator.toml.template` holds the settings of the reported rule-mining run
+(gpt-oss-120b, 3000-question target, seed 7). Its training input is
+`data/train/train_smoke_filtered.json`: BIRD train without the `works_cycles` and
+`human_resources` databases (8895 questions). Sampling it yields 2630 questions, because only
+380 challenging questions exist.
+
+```bash
+python -m dextersql.rule_creator.pipeline --config config/rule_creator.toml   # steps 1-4: 05_created_rules.json
+python scripts/run_targeted_validation_all.py --config config/rule_creator.toml \
+    --seed-accepted RC-PROJECTION-EXTRA-COLUMNS RC-EXTRA-RESULT-COLUMNS       # step 5, as run
+```
+
+The 3 rules used in the reported pipeline run are in `data/rules/mined_3_rules.json`, which
+`config/bird.toml.template` loads through `rules_path`. The ICL few-shot examples are in
+`data/few_shots/bird_dev_few_shots.json`.
+
 ## Configuration
 
 The main template is:

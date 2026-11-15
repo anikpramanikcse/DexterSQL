@@ -10,14 +10,14 @@
 #   python -m dextersql.rule_creator.pipeline --config config/rule_creator.toml --start-step 3   # resume
 
 [data]
-train_json_path = "<TRAIN_ROOT>/train.json"                    # BIRD train.json: [{question_id?, db_id, question, evidence, SQL, difficulty?}, ...]
+train_json_path = "data/train/train_smoke_filtered.json"      # BIRD train.json minus works_cycles and human_resources (8895 questions), as in the reported run
 train_databases_root = "<TRAIN_ROOT>/train_databases"          # one subfolder per db_id, each holding <db_id>.sqlite
 output_dir = "<WORK_ROOT>/rule_creator_output"                 # every step's checkpoint/output file goes here
 
 # ── Step 1a: stratified sampling ─────────────────────────────────────────────
 [sampling]
 target_size = 3000          # total training questions to sample
-seed = 42
+seed = 7
 simple_fraction = 0.40
 moderate_fraction = 0.35
 challenging_fraction = 0.25
@@ -25,7 +25,7 @@ challenging_fraction = 0.25
 # ── Step 1: error mining (candidate generation + execution + explanation) ───
 [error_mining]
 candidates_per_question = 4   # candidate SQLs sampled per question
-n_parallel = 4                # questions processed concurrently
+n_parallel = 12               # questions processed concurrently
 execution_timeout = 30        # seconds
 
 [error_mining.generation_llm]
@@ -33,7 +33,7 @@ model = "<MODEL_ID>"
 api_type = "openai"
 base_url = "<LLM_BASE_URL>"
 api_key = "<API_KEY>"
-max_tokens = 2048
+max_tokens = 8000
 temperature = 0.9              # higher temperature: candidates need to be diverse to surface varied failure modes
 
 [error_mining.explanation_llm]
@@ -41,19 +41,19 @@ model = "<MODEL_ID>"
 api_type = "openai"
 base_url = "<LLM_BASE_URL>"
 api_key = "<API_KEY>"
-max_tokens = 4096
+max_tokens = 8000
 temperature = 0.3               # lower temperature: explanations should be precise, not creative
 
 # ── Step 2: database-agnostic error isolation ────────────────────────────────
 [db_agnostic_filter]
-n_parallel = 8
+n_parallel = 16
 
 [db_agnostic_filter.llm]
 model = "<MODEL_ID>"
 api_type = "openai"
 base_url = "<LLM_BASE_URL>"
 api_key = "<API_KEY>"
-max_tokens = 2048
+max_tokens = 4096
 temperature = 0.3
 
 # ── Step 3: clustering ────────────────────────────────────────────────────────
@@ -81,3 +81,18 @@ base_url = "<LLM_BASE_URL>"
 api_key = "<API_KEY>"
 max_tokens = 4096
 temperature = 0.3
+
+# ── Step 5: targeted rule validation ──────────────────────────────────────────
+# Run with: python scripts/run_targeted_validation_all.py --config config/rule_creator.toml
+[rule_validation]
+batch_size = 24
+harm_ratio_threshold = 0.2
+max_refine_rounds = 1
+
+[rule_validation.llm]
+model = "<MODEL_ID>"
+api_type = "openai"
+base_url = "<LLM_BASE_URL>"
+api_key = "<API_KEY>"
+max_tokens = 6000
+temperature = 0.2

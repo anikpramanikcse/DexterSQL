@@ -129,17 +129,61 @@ def parse_group_merge(content: str, n: int) -> Optional[List[Dict[str, Any]]]:
 
 
 _RULE_NAME_RE = re.compile(r"^RC-[A-Z0-9-]+$")
+_REQUIRED_RULE_FIELDS = ("rule_name", "gist", "bad_pattern", "correct_pattern", "fix")
 
 
-def parse_rule_synthesis(content: str) -> Optional[Dict[str, str]]:
-    """Step 4: <result>{"rule_name", "gist", "bad_pattern", "correct_pattern", "fix"}</result>."""
+def _parse_rule_shaped_result(content: str) -> Optional[Dict[str, str]]:
     obj = _parse_json_result(content)
     if not isinstance(obj, dict):
         return None
-    required = ("rule_name", "gist", "bad_pattern", "correct_pattern", "fix")
-    if not all(k in obj and str(obj[k]).strip() for k in required):
+    if not all(k in obj and str(obj[k]).strip() for k in _REQUIRED_RULE_FIELDS):
         return None
     rule_name = str(obj["rule_name"]).strip().upper()
     if not _RULE_NAME_RE.match(rule_name):
         return None
-    return {k: str(obj[k]).strip() for k in required} | {"rule_name": rule_name}
+    return {k: str(obj[k]).strip() for k in _REQUIRED_RULE_FIELDS} | {"rule_name": rule_name}
+
+
+def parse_rule_synthesis(content: str) -> Optional[Dict[str, str]]:
+    """Step 4: <result>{"rule_name", "gist", "bad_pattern", "correct_pattern", "fix"}</result>."""
+    return _parse_rule_shaped_result(content)
+
+
+def parse_rule_refinement(content: str) -> Optional[Dict[str, str]]:
+    """Step 5: <result>{"rule_name", "gist", "bad_pattern", "correct_pattern", "fix"}</result> --
+    same shape and validation as parse_rule_synthesis; kept as a separate
+    named function since it's a conceptually distinct call site (refinement,
+    not first-time synthesis) even though the wire format is identical."""
+    return _parse_rule_shaped_result(content)
+
+
+def parse_rule_correction_shape(content: str) -> Optional[Dict[str, Any]]:
+    """Step 5: validates ONLY that <result>{"applied_rules": [...], "corrected_sql": "..."}</result>
+    is well-formed -- does not check whether any particular rule_name is in
+    applied_rules. "The rule doesn't apply here" (applied_rules=[]) is a
+    valid, well-formed response, not a parse failure, so format validity and
+    "did this specific rule apply" are checked separately: retry a malformed
+    response, but never retry a legitimately negative one."""
+    obj = _parse_json_result(content)
+    if not isinstance(obj, dict):
+        return None
+    applied_rules = obj.get("applied_rules")
+    corrected_sql = obj.get("corrected_sql")
+    if not isinstance(applied_rules, list) or not isinstance(corrected_sql, str):
+        return None
+    return {"applied_rules": applied_rules, "corrected_sql": corrected_sql.strip()}
+
+
+def parse_rule_correction_result(content: str, rule_name: str) -> Optional[str]:
+    """Step 5: same response as parse_rule_correction_shape, but returns the
+    corrected SQL only if rule_name appears in applied_rules and
+    corrected_sql is non-empty -- None otherwise (either malformed, or the
+    rule legitimately did not apply to this candidate). Callers that need to
+    tell "malformed" apart from "did not apply" should call
+    parse_rule_correction_shape first."""
+    shape = parse_rule_correction_shape(content)
+    if shape is None:
+        return None
+    if rule_name not in shape["applied_rules"] or not shape["corrected_sql"]:
+        return None
+    return shape["corrected_sql"]
