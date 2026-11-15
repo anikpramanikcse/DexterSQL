@@ -23,7 +23,7 @@ class SamplingConfig(BaseModel):
     """Step 1a: stratified sampling of training questions by difficulty."""
 
     target_size: int = Field(default=3000, description="Total number of training questions to sample")
-    seed: int = Field(default=42)
+    seed: int = Field(default=7)
     simple_fraction: float = Field(default=0.40)
     moderate_fraction: float = Field(default=0.35)
     challenging_fraction: float = Field(default=0.25)
@@ -72,6 +72,41 @@ class RuleSynthesisConfig(BaseModel):
     llm: LLMConfig
 
 
+class RuleValidationConfig(BaseModel):
+    """Step 5: validate each synthesized rule against a mixed batch of
+    correct/incorrect training candidates, and refine it if it doesn't
+    clear the harm-ratio threshold. Second half of the paper's Section
+    3.1.4 Step 4 (rule synthesis + validation are one paper step, two
+    pipeline steps here, matching the pattern of Step 2/Step 3 -- see
+    pipeline.py).
+
+    sampling_strategy="targeted" (the default) draws each rule's "incorrect"
+    half from that rule's OWN clustering group in 04_error_groups.json
+    (rule_validation.build_targeted_validation_batch), instead of a blind
+    random draw from the whole fail_final pool. This matters: a rule mined
+    from a cluster of size 74 out of a ~4500-explanation pool has roughly a
+    1.5% base rate, so a small random batch (sampling_strategy="random",
+    batch_size items) has a high chance of containing zero matching cases
+    purely by chance -- confirmed directly on 2026-10-01 (two strong
+    candidate rules scored 0 helped/0 harmed on a random 12-item batch, then
+    helped=2 and helped=6 with 0 harmed once validated against their own
+    cluster). "random" is kept only for comparison/regression testing."""
+
+    sampling_strategy: str = Field(default="targeted", description="'targeted' (recommended) draws the incorrect half from the rule's own cluster; 'random' is the legacy blind full-pool draw")
+
+    # -- "random" strategy only (run_rule_validation) --
+    batch_size: int = Field(default=20, description="[random strategy] mixed correct+incorrect candidates sampled once from the whole pool, reused across every rule and every refinement round")
+
+    # -- "targeted" strategy only (run_targeted_rule_validation) --
+    n_incorrect: int = Field(default=30, description="[targeted strategy] incorrect candidates drawn from the rule's own cluster, capped at the cluster's actual size")
+    n_correct: int = Field(default=16, description="[targeted strategy] random correct candidates (not from the rule's cluster) -- a rule-agnostic test for false positives/harm")
+    n_parallel: int = Field(default=12, description="[targeted strategy] rules validated concurrently (ThreadPoolExecutor), same pattern as error_mining.n_parallel")
+
+    harm_ratio_threshold: float = Field(default=0.2, description="Rule is rejected if |harmed| / |helped| >= this value")
+    max_refine_rounds: int = Field(default=3, description="Refinement attempts before a rule is discarded")
+    llm: LLMConfig
+
+
 class RuleCreatorConfig(BaseModel):
     # -- The only paths this pipeline ever reads. There is deliberately no
     # "split" concept and no path here that could resolve to dev/test data. --
@@ -85,6 +120,7 @@ class RuleCreatorConfig(BaseModel):
     db_agnostic_filter: DbAgnosticFilterConfig
     clustering: ClusteringConfig
     rule_synthesis: RuleSynthesisConfig
+    rule_validation: RuleValidationConfig
 
     @model_validator(mode="after")
     def _check_train_paths_exist(self):
@@ -114,6 +150,18 @@ class RuleCreatorConfig(BaseModel):
     @property
     def created_rules_path(self) -> str:
         return str(Path(self.output_dir) / "05_created_rules.json")
+
+    @property
+    def validated_rules_path(self) -> str:
+        return str(Path(self.output_dir) / "06_validated_rules.json")
+
+    @property
+    def validation_checkpoint_path(self) -> str:
+        """Incremental, resumable per-rule results for run_targeted_rule_validation
+        -- one JSON line per rule as soon as it's decided, keyed by rule_name, so a
+        killed/restarted run only re-does what's left (same pattern as
+        error_mining's fail_candidate_path)."""
+        return str(Path(self.output_dir) / "06_validation_checkpoint.jsonl")
 
 
 def load_rule_creator_config(path: str) -> RuleCreatorConfig:
@@ -154,6 +202,18 @@ def load_rule_creator_config(path: str) -> RuleCreatorConfig:
         llm=LLMConfig(**rule_synthesis_raw["llm"]),
     )
 
+    rule_validation_raw = raw["rule_validation"]
+    rule_validation = RuleValidationConfig(
+        sampling_strategy=rule_validation_raw.get("sampling_strategy", "targeted"),
+        batch_size=rule_validation_raw.get("batch_size", 20),
+        n_incorrect=rule_validation_raw.get("n_incorrect", 30),
+        n_correct=rule_validation_raw.get("n_correct", 16),
+        n_parallel=rule_validation_raw.get("n_parallel", 12),
+        harm_ratio_threshold=rule_validation_raw.get("harm_ratio_threshold", 0.2),
+        max_refine_rounds=rule_validation_raw.get("max_refine_rounds", 3),
+        llm=LLMConfig(**rule_validation_raw["llm"]),
+    )
+
     return RuleCreatorConfig(
         train_json_path=raw["data"]["train_json_path"],
         train_databases_root=raw["data"]["train_databases_root"],
@@ -163,4 +223,5 @@ def load_rule_creator_config(path: str) -> RuleCreatorConfig:
         db_agnostic_filter=db_agnostic_filter,
         clustering=clustering,
         rule_synthesis=rule_synthesis,
+        rule_validation=rule_validation,
     )

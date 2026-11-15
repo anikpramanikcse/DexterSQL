@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from dextersql.rule_correction.example_rules import RULES as _ALL_CORRECTION_RULES
+
+_EXAMPLE_RULE_NAMES = ("RC-PROJECTION-EXTRA-COLUMN", "RC-COLUMN-ORDER-MISMATCH")
+EXAMPLE_RULES = [r for r in _ALL_CORRECTION_RULES if r["rule_name"] in _EXAMPLE_RULE_NAMES]
+
 
 # ---------------------------------------------------------------------------
 # Step 1a: candidate SQL generation
@@ -209,12 +214,33 @@ def format_group_merge_prompt(groups: List[Dict[str, Any]]) -> str:
 # Step 4: rule synthesis
 # ---------------------------------------------------------------------------
 
+def _format_example_rule(rule: Dict[str, str]) -> str:
+    return (
+        f'rule_name: "{rule["rule_name"]}"\n'
+        f'gist: "{rule["gist"]}"\n'
+        f'bad_pattern: "{rule["bad_pattern"]}"\n'
+        f'correct_pattern: "{rule["correct_pattern"]}"\n'
+        f'fix: "{rule["fix"]}"'
+    )
+
+
+# Two active rules already shipped in dextersql/rule_correction/example_rules.py,
+# shown as in-context examples so the model sees the expected shape and level
+# of detail before writing a new rule, rather than inferring it from the
+# instructions alone.
+_EXAMPLE_RULES_BLOCK = "\n\n".join(
+    f"Example {i+1}:\n{_format_example_rule(r)}" for i, r in enumerate(EXAMPLE_RULES[:2])
+)
+
 RULE_SYNTHESIS_PROMPT = """You convert a dominant, recurring SQL-generation error pattern into a canonical
 correction rule. The rule will later be shown to an LLM at inference time,
 alongside a candidate SQL query, so it can detect and fix this exact error
 pattern in NEW questions against DIFFERENT databases it has never seen mined
 examples from -- so the rule must describe the error and fix generically, not
 in terms of this group's specific tables/columns/questions.
+
+# Example rules (for reference -- match this shape and level of detail):
+{EXAMPLE_RULES_BLOCK}
 
 # Error group label:
 {GROUP_LABEL}
@@ -244,4 +270,78 @@ def format_rule_synthesis_prompt(group_label: str, examples: List[Dict[str, Any]
             f"    generated: {ex['candidate_sql']}\n"
             f"    why wrong: {ex['explanation']}"
         )
-    return RULE_SYNTHESIS_PROMPT.format(GROUP_LABEL=group_label, EXAMPLES_BLOCK="\n\n".join(lines))
+    return RULE_SYNTHESIS_PROMPT.format(
+        EXAMPLE_RULES_BLOCK=_EXAMPLE_RULES_BLOCK,
+        GROUP_LABEL=group_label,
+        EXAMPLES_BLOCK="\n\n".join(lines),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 5: rule refinement (validation feedback -> revised rule)
+# ---------------------------------------------------------------------------
+
+def _format_case(case: Dict[str, Any]) -> str:
+    return (
+        f"question: {case['question']}\n"
+        f"gold_sql: {case['gold_sql']}\n"
+        f"sql before rule: {case['before_sql']}\n"
+        f"sql after rule:  {case['after_sql']}\n"
+        f"outcome: {case['outcome']}"
+    )
+
+
+RULE_REFINEMENT_PROMPT = """A correction rule you were shown below was tested against real training-data
+cases and did not pass validation. Your job is to revise the rule -- its
+gist, bad_pattern, correct_pattern, and fix -- so it stops causing harmed
+cases and/or starts catching helped cases it currently misses, while keeping
+it generic enough to apply to databases it has never seen.
+
+# Current rule:
+{CURRENT_RULE_BLOCK}
+
+# Validation outcomes ("helped" = an incorrect candidate became correct after
+# applying the rule -- keep doing this; "harmed" = a correct candidate became
+# incorrect after applying the rule -- stop doing this; "unchanged" = the rule
+# did not apply or made no difference):
+
+## Helped cases:
+{HELPED_BLOCK}
+
+## Harmed cases:
+{HARMED_BLOCK}
+
+## Unchanged cases (sample):
+{UNCHANGED_BLOCK}
+
+Reflect on why the harmed cases went wrong and why any helped cases the rule
+is meant to catch might be getting missed elsewhere. Revise the rule to fix
+the harmed cases without losing the helped ones. If bad_pattern is too broad
+(catching cases it shouldn't), narrow it. If fix is making unjustified
+changes, constrain it.
+
+Think step by step in <reasoning></reasoning>, then answer in <result></result>
+as JSON with the same shape as before:
+<result>{{"rule_name": "{RULE_NAME}", "gist": "...", "bad_pattern": "...", "correct_pattern": "...", "fix": "..."}}</result>
+
+Keep rule_name unchanged."""
+
+
+def format_rule_refinement_prompt(
+    rule: Dict[str, str],
+    helped_cases: List[Dict[str, Any]],
+    harmed_cases: List[Dict[str, Any]],
+    unchanged_cases: List[Dict[str, Any]],
+    max_unchanged_shown: int = 4,
+) -> str:
+    current_rule_block = _format_example_rule(rule)
+    helped_block = "\n\n".join(_format_case(c) for c in helped_cases) or "(none)"
+    harmed_block = "\n\n".join(_format_case(c) for c in harmed_cases) or "(none)"
+    unchanged_block = "\n\n".join(_format_case(c) for c in unchanged_cases[:max_unchanged_shown]) or "(none)"
+    return RULE_REFINEMENT_PROMPT.format(
+        CURRENT_RULE_BLOCK=current_rule_block,
+        HELPED_BLOCK=helped_block,
+        HARMED_BLOCK=harmed_block,
+        UNCHANGED_BLOCK=unchanged_block,
+        RULE_NAME=rule["rule_name"],
+    )
