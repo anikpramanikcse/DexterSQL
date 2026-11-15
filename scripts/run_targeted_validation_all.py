@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root
 
 from dextersql.rule_creator.config import load_rule_creator_config
 from dextersql.rule_creator.rule_validation import (
+    write_validated_rules,
     build_targeted_validation_batch,
     _find_group_for_rule,
     _validate_once,
@@ -179,9 +180,8 @@ with open(checkpoint_path) as f:
         if line:
             all_results.append(json.loads(line))
 
-accepted_rules = [r["final_rule"] for r in all_results if r.get("accepted") and r.get("final_rule")]
+n_accepted = sum(1 for r in all_results if r.get("accepted") and r.get("final_rule"))
 final_path = out_dir / FINAL_ACCEPTED_NAME
-with open(final_path, "w") as f:
-    json.dump(accepted_rules, f, indent=2)
-
-print(f"[validate_all] DONE: {len(accepted_rules)}/{len(all_results)} rules accepted overall -> {final_path}", flush=True)
+kept = write_validated_rules(all_results, config, final_path)   # top_k by helped -> final_path; all -> *_all_accepted.json
+print(f"[validate_all] DONE: {n_accepted}/{len(all_results)} rules accepted overall, "
+      f"{len(kept)} kept (top_k={config.rule_validation.top_k}) -> {final_path}", flush=True)

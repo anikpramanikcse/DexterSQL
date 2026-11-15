@@ -339,6 +339,35 @@ def _passes(cases: Dict[str, List[Dict[str, Any]]], threshold: float) -> bool:
     return n_helped >= 1 and (n_harmed / n_helped) < threshold
 
 
+def select_top_k_rules(results: List[Dict[str, Any]], k: int) -> List[Dict[str, Any]]:
+    """Top-k of the accepted rules. `results` are per-rule validation records
+    ({"accepted", "final_rule", "rounds": [{"helped", ...}], "n_cluster_members"?}).
+    Ranked by the helped count of the rule's last validation round, ties broken
+    by cluster size (larger first), then by original order. k <= 0 keeps all."""
+    accepted = [r for r in results if r.get("accepted") and r.get("final_rule")]
+    helped = lambda r: ((r.get("rounds") or [{}])[-1].get("helped") or 0)
+    order = sorted(range(len(accepted)),
+                   key=lambda i: (-helped(accepted[i]), -(accepted[i].get("n_cluster_members") or 0), i))
+    ranked = [accepted[i]["final_rule"] for i in order]
+    return ranked[:k] if k and k > 0 else ranked
+
+
+def write_validated_rules(results: List[Dict[str, Any]], config: RuleCreatorConfig, out_path) -> List[Dict[str, Any]]:
+    """Write every accepted rule to <out>_all_accepted.json and the top-k
+    (config.rule_validation.top_k) to out_path, the file rule correction reads."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    all_accepted = select_top_k_rules(results, 0)
+    kept = select_top_k_rules(results, config.rule_validation.top_k)
+    with open(out_path.with_name(out_path.stem + "_all_accepted.json"), "w") as f:
+        json.dump(all_accepted, f, indent=2)
+    with open(out_path, "w") as f:
+        json.dump(kept, f, indent=2)
+    print(f"[rule_validation] {len(all_accepted)} accepted, top_k={config.rule_validation.top_k} kept "
+          f"{[r['rule_name'] for r in kept]} -> {out_path}")
+    return kept
+
+
 def run_rule_validation(config: RuleCreatorConfig, rules: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     if rules is None:
         rules = _load_created_rules(config.created_rules_path)
@@ -351,6 +380,7 @@ def run_rule_validation(config: RuleCreatorConfig, rules: List[Dict[str, Any]] =
     batch = build_validation_batch(config, generation_llm)
 
     accepted: List[Dict[str, Any]] = []
+    results: List[Dict[str, Any]] = []
     for rule in rules:
         current_rule = dict(rule)
         for round_idx in range(config.rule_validation.max_refine_rounds + 1):
@@ -363,6 +393,7 @@ def run_rule_validation(config: RuleCreatorConfig, rules: List[Dict[str, Any]] =
             )
             if _passes(cases, config.rule_validation.harm_ratio_threshold):
                 accepted.append(current_rule)
+                results.append({"accepted": True, "final_rule": current_rule, "rounds": [{"helped": n_helped}]})
                 print(f"[rule_validation]   {current_rule['rule_name']} ACCEPTED (round {round_idx})")
                 break
             if round_idx == config.rule_validation.max_refine_rounds:
@@ -382,13 +413,8 @@ def run_rule_validation(config: RuleCreatorConfig, rules: List[Dict[str, Any]] =
             refined["rule_name"] = current_rule["rule_name"]  # name is pinned across refinement rounds
             current_rule = refined
 
-    out_path = Path(config.validated_rules_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(accepted, f, indent=2)
-
-    print(f"[rule_validation] {len(accepted)}/{len(rules)} rules accepted -> {out_path}")
-    return accepted
+    print(f"[rule_validation] {len(accepted)}/{len(rules)} rules accepted")
+    return write_validated_rules(results, config, config.validated_rules_path)
 
 
 def _validate_one_rule_targeted(rule: Dict[str, Any], config: RuleCreatorConfig, correction_llm, generation_llm) -> Dict[str, Any]:
@@ -540,10 +566,6 @@ def run_targeted_rule_validation(
             if line:
                 all_results.append(json.loads(line))
 
-    accepted = [r["final_rule"] for r in all_results if r.get("accepted") and r.get("final_rule")]
-    out_path = Path(config.validated_rules_path)
-    with open(out_path, "w") as f:
-        json.dump(accepted, f, indent=2)
-
-    print(f"[rule_validation] {len(accepted)}/{len(all_results)} rules accepted overall -> {out_path}")
-    return accepted
+    n_acc = sum(1 for r in all_results if r.get("accepted") and r.get("final_rule"))
+    print(f"[rule_validation] {n_acc}/{len(all_results)} rules accepted overall")
+    return write_validated_rules(all_results, config, config.validated_rules_path)

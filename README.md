@@ -100,7 +100,9 @@ python -m dextersql.rule_creator.pipeline --config config/rule_creator.toml   # 
 python scripts/run_targeted_validation_all.py --config config/rule_creator.toml  # step 5: 06_validated_rules_final.json
 ```
 
-Rule correction uses the rules accepted by validation,
+Rule correction uses the top `top_k` (default 2) rules accepted by validation, ranked by how many
+validation cases each rule fixed (helped); every accepted rule is also saved to
+`06_validated_rules_final_all_accepted.json`. The kept rules are in
 `<WORK_ROOT>/rule_creator_output/06_validated_rules_final.json`, which `config/bird.toml.template`
 loads through `rules_path`. The ICL few-shot examples are in
 `data/few_shots/bird_dev_few_shots.json`.

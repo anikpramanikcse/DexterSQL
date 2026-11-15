@@ -87,6 +87,7 @@ temperature = 0.3
 [rule_validation]
 batch_size = 24
 harm_ratio_threshold = 0.2
+top_k = 2                     # keep the 2 accepted rules with the most helped cases (0 = keep all)
 max_refine_rounds = 1
 
 [rule_validation.llm]

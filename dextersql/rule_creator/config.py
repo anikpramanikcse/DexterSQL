@@ -103,6 +103,7 @@ class RuleValidationConfig(BaseModel):
     n_parallel: int = Field(default=12, description="[targeted strategy] rules validated concurrently (ThreadPoolExecutor), same pattern as error_mining.n_parallel")
 
     harm_ratio_threshold: float = Field(default=0.2, description="Rule is rejected if |harmed| / |helped| >= this value")
+    top_k: int = Field(default=2, description="Keep only the k accepted rules with the most helped cases (ties: larger cluster first); 0 = keep every accepted rule")
     max_refine_rounds: int = Field(default=3, description="Refinement attempts before a rule is discarded")
     llm: LLMConfig
 
