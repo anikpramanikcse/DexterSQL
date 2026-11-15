@@ -14,7 +14,7 @@ Prompting-based (i.e., non-fine-tuning) Text-to-SQL methods, where underlying la
 
 This paper develops DexterSQL, a prompting/non-fine-tuning-based Text-to-SQL system that improves SQL generation with three novel components: (i) deep schema explorator that identifies ambiguous columns, analyzes their individual and joint data distributions to uncover their relationships and the distinct role of each, (ii) database-agnostic rule creator that mines mismatches between generated and gold SQL only on the training database and converts them into database-agnostic corrective rules that capture recurring LLM failure patterns; and (iii) multi-path SQL generation that introduces a dependency-tree-based intermediate representation that uses the question's sentence structure to guide its decomposition into an SQL skeleton for final SQL generation.
 
-DexterSQL achieves a higher accuracy compared to the state-of-the-art using both open-source/weight and closed-source/weight models. Particularly, DexterSQL shows a high improvement of at least 5.5% using an open-weight model (GPT-OSS-120B) on BIRD-Dev, with total accuracy 70.4%. DexterSQL also shows better improvement of at least 1.4% using closed-weight models, with total accuracy 72.1% and 72.9% on BIRD-Dev with GPT-4o and GPT-5.2.
+DexterSQL achieves higher accuracy than the state of the art on BIRD-Dev with both open-weight (GPT-OSS-120B) and closed-weight (GPT-4o, GPT-5.2) models.
 
 ## Installation
 
