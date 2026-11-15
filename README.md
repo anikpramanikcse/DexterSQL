@@ -101,8 +101,9 @@ python scripts/run_targeted_validation_all.py --config config/rule_creator.toml 
     --seed-accepted RC-PROJECTION-EXTRA-COLUMNS RC-EXTRA-RESULT-COLUMNS       # step 5, as run
 ```
 
-The 3 rules used in the reported pipeline run are in `data/rules/mined_3_rules.json`, which
-`config/bird.toml.template` loads through `rules_path`. The ICL few-shot examples are in
+Rule correction uses the rules accepted by validation,
+`<WORK_ROOT>/rule_creator_output/06_validated_rules_final.json`, which `config/bird.toml.template`
+loads through `rules_path`. The ICL few-shot examples are in
 `data/few_shots/bird_dev_few_shots.json`.
 
 ## Configuration

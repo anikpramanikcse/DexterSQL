@@ -112,7 +112,7 @@ n_internal_parallel = 8
 save_path = "<RESULTS_ROOT>/sql_rule_correction/bird/dev.snapshot"
 # Empty = use the example rules in dextersql/rule_correction/example_rules.py.
 # To use a mined set, point this at rule_creator's 05_created_rules.json.
-rules_path = "data/rules/mined_3_rules.json"   # the 3 mined + validated rules of the reported run; "" = example rules
+rules_path = "<WORK_ROOT>/rule_creator_output/06_validated_rules_final.json"   # rules accepted by the rule creator's validation step; "" = example rules
 
 [sql_rule_correction.llm]
 model = "<MODEL_ID>"
