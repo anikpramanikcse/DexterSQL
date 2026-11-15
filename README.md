@@ -97,8 +97,7 @@ Before running it, set the placeholders inside the script for:
 
 ```bash
 python -m dextersql.rule_creator.pipeline --config config/rule_creator.toml   # steps 1-4: 05_created_rules.json
-python scripts/run_targeted_validation_all.py --config config/rule_creator.toml \
-    --seed-accepted RC-PROJECTION-EXTRA-COLUMNS RC-EXTRA-RESULT-COLUMNS       # step 5, as run
+python scripts/run_targeted_validation_all.py --config config/rule_creator.toml  # step 5: 06_validated_rules_final.json
 ```
 
 Rule correction uses the rules accepted by validation,
