@@ -22,7 +22,7 @@ from dextersql.core.config.config import LLMConfig
 class SamplingConfig(BaseModel):
     """Step 1a: stratified sampling of training questions by difficulty."""
 
-    target_size: int = Field(default=300, description="Total number of training questions to sample")
+    target_size: int = Field(default=3000, description="Total number of training questions to sample")
     seed: int = Field(default=42)
     simple_fraction: float = Field(default=0.40)
     moderate_fraction: float = Field(default=0.35)
