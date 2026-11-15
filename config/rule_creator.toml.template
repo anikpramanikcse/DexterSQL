@@ -16,7 +16,7 @@ output_dir = "<WORK_ROOT>/rule_creator_output"                 # every step's ch
 
 # ── Step 1a: stratified sampling ─────────────────────────────────────────────
 [sampling]
-target_size = 300           # total training questions to sample
+target_size = 3000          # total training questions to sample
 seed = 42
 simple_fraction = 0.40
 moderate_fraction = 0.35
